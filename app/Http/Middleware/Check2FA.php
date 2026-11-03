@@ -15,7 +15,7 @@ class Check2FA
      */
     public function handle(Request $request, Closure $next)
     {
-        if (Request $request) {
+        if (/* La session contient 2fa_email */) {
             return redirect('/verification');
         }
 

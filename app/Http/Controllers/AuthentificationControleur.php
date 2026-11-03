@@ -63,24 +63,57 @@ class AuthentificationControleur extends Controller
 
         $estValide = password_verify($request->input('password'), $membre->password);
 
-        if ($estValide) {
+       if ($estValide) {
             // Un code aléatoire à 6 chiffres (str_pad ajoute les zéros de tête : 007243)
             $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
-            $membre->two_factor_code = $code;
-            $membre->two_factor_expires_at = now()->addMinutes(10);
-            $membre->save();
+            $utilisateur->two_factor_code = $code;
+            $utilisateur->two_factor_expires_at = now()->addMinutes(10);
+            $utilisateur->save();
 
             // « Envoi » du code : dans ce TP, il est écrit dans le fichier de log
-            Log::info("Code 2FA pour {$membre->email} : {$code}");
+            Log::info("Code 2FA pour {$utilisateur->email} : {$code}");
 
-            // On mémorise qui est en cours de connexion (mais PAS encore connecté)
-            $request->session()->put('2fa_email', $membre->email);
+            // On mémorise en session qui est en cours de connexion et son code
+            // (l'utilisateur n'est PAS encore connecté)
+            $request->session()->put('2fa_id', $utilisateur->id);
+            $request->session()->put('2fa_code', $code);
 
             return redirect('/verification');
         }
 
         return $this->identifiantsIncorrects($request);
+    }
+
+    public function verification(Request $request)
+    {
+        if ($request->session()->has('2fa_id')) {
+            $membre = Membre::find($request->session()->get('2fa_id'));
+
+            if ($request->isMethod('post')) {
+                $codeSaisi = $request->input('code');
+
+                if ($codeSaisi === $membre->two_factor_code && now()->lessThanOrEqualTo($membre->two_factor_expires_at)) {
+                    // Code correct et non expiré : on connecte l'utilisateur
+                    Auth::login($membre);
+
+                    // On supprime le code 2FA de la base de données
+                    $membre->two_factor_code = null;
+                    $membre->two_factor_expires_at = null;
+                    $membre->save();
+
+                    // On supprime les informations de 2FA de la session
+                    $request->session()->forget(['2fa_id', '2fa_code']);
+
+                    return redirect('/livres');
+                } else {
+                    return redirect('/verification')->withErrors(['code' => 'Code incorrect ou expiré']);
+                }
+            }
+
+            return view('verification');
+        }
+
     }
 
     /**
