@@ -87,33 +87,32 @@ class AuthentificationControleur extends Controller
 
     public function verification(Request $request)
     {
-        if ($request->session()->has('2fa_id')) {
-            $membre = Membre::find($request->session()->get('2fa_id'));
+        // L'utilisateur en cours de connexion, retrouvé grâce à l'id gardé en session
+        $utilisateur = Utilisateur::find($request->session()->get('2fa_id'));
 
-            if ($request->isMethod('post')) {
-                $codeSaisi = $request->input('code');
+        // Le code saisi doit être celui de la session, et ne pas être expiré
+        $codeValide = $request->input('code') === $request->session()->get('2fa_code')
+            && now()->lt($utilisateur->two_factor_expires_at);
 
-                if ($codeSaisi === $membre->two_factor_code && now()->lessThanOrEqualTo($membre->two_factor_expires_at)) {
-                    // Code correct et non expiré : on connecte l'utilisateur
-                    Auth::login($membre);
-
-                    // On supprime le code 2FA de la base de données
-                    $membre->two_factor_code = null;
-                    $membre->two_factor_expires_at = null;
-                    $membre->save();
-
-                    // On supprime les informations de 2FA de la session
-                    $request->session()->forget(['2fa_id', '2fa_code']);
-
-                    return redirect('/livres');
-                } else {
-                    return redirect('/verification')->withErrors(['code' => 'Code incorrect ou expiré']);
-                }
-            }
-
-            return view('verification');
+        if (!$codeValide) {
+            return redirect('/verification')->withErrors(['code' => 'Code invalide ou expiré']);
         }
 
+        // 1. Usage unique : le code est invalidé en base…
+        $utilisateur->two_factor_code = null;
+        $utilisateur->two_factor_expires_at = null;
+        $utilisateur->save();
+
+        // 2. … et retiré de la session
+        $request->session()->forget(['2fa_id', '2fa_code']);
+
+        // 3. Le mot de passe ET le code sont validés : on ouvre enfin la session
+        Auth::login($utilisateur);
+        // Nouvel identifiant de session (protection contre la fixation de session)
+        $request->session()->regenerate();
+
+        // 4. Direction la TODO List
+        return redirect('/')->with('success', "Bienvenue {$utilisateur->email} !");
     }
 
     /**
