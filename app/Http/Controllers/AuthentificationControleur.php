@@ -67,16 +67,16 @@ class AuthentificationControleur extends Controller
             // Un code aléatoire à 6 chiffres (str_pad ajoute les zéros de tête : 007243)
             $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
-            $utilisateur->two_factor_code = $code;
-            $utilisateur->two_factor_expires_at = now()->addMinutes(10);
-            $utilisateur->save();
+            $membre->two_factor_code = $code;
+            $membre->two_factor_expires_at = now()->addMinutes(10);
+            $membre->save();
 
             // « Envoi » du code : dans ce TP, il est écrit dans le fichier de log
-            Log::info("Code 2FA pour {$utilisateur->email} : {$code}");
+            Log::info("Code 2FA pour {$membre->email} : {$code}");
 
             // On mémorise en session qui est en cours de connexion et son code
             // (l'utilisateur n'est PAS encore connecté)
-            $request->session()->put('2fa_id', $utilisateur->id);
+            $request->session()->put('2fa_id', $membre->id);
             $request->session()->put('2fa_code', $code);
 
             return redirect('/verification');
@@ -88,31 +88,34 @@ class AuthentificationControleur extends Controller
     public function verification(Request $request)
     {
         // L'utilisateur en cours de connexion, retrouvé grâce à l'id gardé en session
-        $utilisateur = Utilisateur::find($request->session()->get('2fa_id'));
+        $membre = Membre::find($request->session()->get('2fa_id'));
+        if ($membre === null) {
+            return redirect('/login');
+        }
 
         // Le code saisi doit être celui de la session, et ne pas être expiré
         $codeValide = $request->input('code') === $request->session()->get('2fa_code')
-            && now()->lt($utilisateur->two_factor_expires_at);
+            && now()->lt($membre->two_factor_expires_at);
 
         if (!$codeValide) {
             return redirect('/verification')->withErrors(['code' => 'Code invalide ou expiré']);
         }
 
         // 1. Usage unique : le code est invalidé en base…
-        $utilisateur->two_factor_code = null;
-        $utilisateur->two_factor_expires_at = null;
-        $utilisateur->save();
+        $membre->two_factor_code = null;
+        $membre->two_factor_expires_at = null;
+        $membre->save();
 
         // 2. … et retiré de la session
         $request->session()->forget(['2fa_id', '2fa_code']);
 
         // 3. Le mot de passe ET le code sont validés : on ouvre enfin la session
-        Auth::login($utilisateur);
+        Auth::login($membre);
         // Nouvel identifiant de session (protection contre la fixation de session)
         $request->session()->regenerate();
 
         // 4. Direction la TODO List
-        return redirect('/')->with('success', "Bienvenue {$utilisateur->email} !");
+        return redirect('/')->with('success', "Bienvenue {$membre->email} !");
     }
 
     /**
@@ -134,4 +137,14 @@ class AuthentificationControleur extends Controller
             ->withInput($request->only('email'))
             ->withErrors(['email' => 'Identifiants incorrects']);
     }
+
+    public function afficherVerification(Request $request)
+    {
+        if (!$request->session()->has('2fa_code')) {
+            return redirect('/login');
+        }
+
+        return view('verification');
+    }
 }
+

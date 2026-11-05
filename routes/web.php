@@ -20,5 +20,6 @@ Route::post('/traitementLogin', [AuthentificationControleur::class, 'traitementL
 Route::get('/register', [AuthentificationControleur::class, 'register']);
 Route::post('/traitementRegister', [AuthentificationControleur::class, 'traitementRegister']);
 Route::get('/logout', [AuthentificationControleur::class, 'logout']);
-Route::get('/verification', [AuthentificationControleur::class, 'verification']);
+
+Route::get('/verification', [AuthentificationControleur::class, 'afficherVerification']);
 Route::post('/verification', [AuthentificationControleur::class, 'verification']);
